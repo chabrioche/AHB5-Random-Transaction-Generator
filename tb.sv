@@ -1,10 +1,13 @@
-module tb_xAHB2APB;
+module tb;
 
     // Testbench parameters
-    parameter int NUM_AHB = 2;
-    parameter int NUM_APB = 1;
+    parameter int NUM_AHB = 2;       // Number of AHB interfaces
+    parameter int NUM_APB = 4;       // Number of APB peripherals (generic)
+
     parameter int ADDR_WIDTH = 32;
     parameter int DATA_WIDTH = 32;
+    parameter int APB_BASE_ADDR = 32'h80000000;
+    parameter int APB_ADDR_RANGE = 32'h00001000;
 
     // Clock and reset signals
     logic HCLK;
@@ -24,11 +27,11 @@ module tb_xAHB2APB;
     logic                  HNONSEC   [NUM_AHB-1:0];
     logic [3:0]            HCID      [NUM_AHB-1:0];
 
-    // APB signals
+    // Shared APB bus signals
     logic [ADDR_WIDTH-1:0] PADDR;
     logic [DATA_WIDTH-1:0] PWDATA;
     logic                  PWRITE;
-    logic                  PSEL;
+    logic [NUM_APB-1:0]    PSEL;
     logic                  PENABLE;
     logic [DATA_WIDTH-1:0] PRDATA;
     logic                  PSLVERROR;
@@ -39,13 +42,15 @@ module tb_xAHB2APB;
     logic cid_ilac [NUM_APB-1:0];
     logic priv_ilac [NUM_APB-1:0];
 
-    // Instantiate the xAHB2APB bridge
+    // Instantiate the xAHB2APB bridge with arbitration
     xAHB2APB #(
         .NUM_AHB(NUM_AHB),
         .NUM_APB(NUM_APB),
-        .APB_SECURE(1'b1),            // Secure attribute for the APB peripheral
-        .APB_CID('{4'b0000}),          // Compartment ID for the APB peripheral
-        .APB_PRIV('{4'b0000})          // Privilege level for the APB peripheral
+        .ARB_TYPE(0), // Round-robin arbitration
+        .WEIGHT_0(1), // Not used for round-robin, but set for weighted round-robin
+        .WEIGHT_1(1), // Not used for round-robin
+        .APB_BASE_ADDR(APB_BASE_ADDR),
+        .APB_ADDR_RANGE(APB_ADDR_RANGE)
     ) dut (
         .HCLK(HCLK),
         .HRESETn(HRESETn),
@@ -74,24 +79,29 @@ module tb_xAHB2APB;
         .priv_ilac(priv_ilac)
     );
 
-    // Instantiate a simple APB peripheral
-    simple_apb_peripheral #(
-        .ADDR_WIDTH(ADDR_WIDTH),
-        .DATA_WIDTH(DATA_WIDTH)
-    ) apb_slave (
-        .PCLK(HCLK),
-        .PRESETn(HRESETn),
-        .PADDR(PADDR),
-        .PWDATA(PWDATA),
-        .PWRITE(PWRITE),
-        .PSEL(PSEL),
-        .PENABLE(PENABLE),
-        .PRDATA(PRDATA),
-        .PSLVERROR(PSLVERROR),
-        .PREADY(PREADY)
-    );
+    // Instantiate multiple APB peripherals (generic number of peripherals)
+    genvar i;
+    generate
+        for (i = 0; i < NUM_APB; i++) begin : apb_peripherals
+            apb_per #(
+                .ADDR_WIDTH(ADDR_WIDTH),
+                .DATA_WIDTH(DATA_WIDTH)
+            ) apb_slave (
+                .PCLK(HCLK),
+                .PRESETn(HRESETn),
+                .PADDR(PADDR),          // Shared APB address bus
+                .PWDATA(PWDATA),        // Shared APB write data bus
+                .PWRITE(PWRITE),        // Shared APB write enable
+                .PSEL(PSEL[i]),         // Peripheral select
+                .PENABLE(PENABLE),      // Shared APB enable signal
+                .PRDATA(PRDATA),        // Shared APB read data bus
+                .PSLVERROR(PSLVERROR),  // Shared APB slave error
+                .PREADY(PREADY)         // Shared APB ready signal
+            );
+        end
+    endgenerate
 
-    // AHB random transaction generator
+    // AHB random transaction generator for AHB interface 0
     AHB5_Random_Transaction_Generator #(
         .ADDR_WIDTH(ADDR_WIDTH),
         .DATA_WIDTH(DATA_WIDTH)
@@ -105,6 +115,22 @@ module tb_xAHB2APB;
         .HPROT(HPROT[0]),
         .HSEL(HSEL[0]),
         .HREADY(HREADY[0])
+    );
+
+    // AHB random transaction generator for AHB interface 1
+    AHB5_Random_Transaction_Generator #(
+        .ADDR_WIDTH(ADDR_WIDTH),
+        .DATA_WIDTH(DATA_WIDTH)
+    ) ahb_gen_1 (
+        .HCLK(HCLK),
+        .HRESETn(HRESETn),
+        .HADDR(HADDR[1]),
+        .HWDATA(HWDATA[1]),
+        .HWRITE(HWRITE[1]),
+        .HTRANS(HTRANS[1]),
+        .HPROT(HPROT[1]),
+        .HSEL(HSEL[1]),
+        .HREADY(HREADY[1])
     );
 
     // Clock generation
@@ -121,9 +147,10 @@ module tb_xAHB2APB;
 
     // Simulation control
     initial begin
-        // Start the random transaction generator
+        // Start the random transaction generators
         ahb_gen_0.start_random_transactions();
-        
+        ahb_gen_1.start_random_transactions();
+
         // Monitor the APB signals
         $monitor("Time: %t | APB PADDR: %h PWDATA: %h PWRITE: %b PSEL: %b PENABLE: %b PRDATA: %h PSLVERROR: %b PREADY: %b",
                  $time, PADDR, PWDATA, PWRITE, PSEL, PENABLE, PRDATA, PSLVERROR, PREADY);
@@ -132,43 +159,4 @@ module tb_xAHB2APB;
         #1000 $stop;
     end
 
-endmodule
-
-// Simple APB peripheral module
-module simple_apb_peripheral #(
-    parameter int ADDR_WIDTH = 32,
-    parameter int DATA_WIDTH = 32
-)(
-    input  logic              PCLK,
-    input  logic              PRESETn,
-    input  logic [ADDR_WIDTH-1:0] PADDR,
-    input  logic [DATA_WIDTH-1:0] PWDATA,
-    input  logic              PWRITE,
-    input  logic              PSEL,
-    input  logic              PENABLE,
-    output logic [DATA_WIDTH-1:0] PRDATA,
-    output logic              PSLVERROR,
-    output logic              PREADY
-);
-
-    // Internal memory to store data
-    logic [DATA_WIDTH-1:0] memory [0:255];
-
-    // APB response logic
-    always_ff @(posedge PCLK or negedge PRESETn) begin
-        if (!PRESETn) begin
-            PRDATA     <= 32'h0;
-            PSLVERROR  <= 1'b0;
-            PREADY     <= 1'b1;
-        end else if (PSEL && PENABLE) begin
-            PREADY <= 1'b1;
-            if (PWRITE) begin
-                memory[PADDR] <= PWDATA;  // Write operation
-            end else begin
-                PRDATA <= memory[PADDR];  // Read operation
-            end
-        end else begin
-            PREADY <= 1'b1;
-        end
-    end
 endmodule
