@@ -1,23 +1,30 @@
-module LFSR (
-    input logic        clk,      // Clock signal
-    input logic        rstn,     // Active-low reset signal
-    output logic [31:0] random_val // 32-bit random value output from the LFSR
+module LFSR #(
+    parameter int WIDTH = 32
+)(
+    input  logic clk,      // Clock signal
+    input  logic rstn,     // Active-low reset signal
+    output logic [WIDTH-1:0] random_val // Generated pseudo-random value
 );
 
-    logic [31:0] lfsr_reg;  // 32-bit LFSR register
+    logic [WIDTH-1:0] lfsr_reg, lfsr_next; // LFSR register and next state
+    logic feedback; // Feedback bit
 
-    // Shift register logic with feedback taps for pseudo-random generation
+    // Primitive polynomial for a 32-bit LFSR: x^32 + x^31 + x^29 + x + 1
+    always_comb begin
+        feedback = lfsr_reg[WIDTH-1] ^ lfsr_reg[30] ^ lfsr_reg[28] ^ lfsr_reg[0]; // Feedback taps
+        lfsr_next = {lfsr_reg[WIDTH-2:0], feedback}; // Shift and feedback
+    end
+
+    // Sequential logic for LFSR update
     always_ff @(posedge clk or negedge rstn) begin
         if (!rstn) begin
-            // On reset, initialize the LFSR with a seed value
-            lfsr_reg <= 32'hACE1_1234;
+            lfsr_reg <= {WIDTH{1'b1}}; // Reset to all 1s to avoid all-zero state
         end else begin
-            // LFSR feedback calculation: shifts the bits and applies XOR on certain taps
-            lfsr_reg <= {lfsr_reg[30:0], lfsr_reg[31] ^ lfsr_reg[21] ^ lfsr_reg[1] ^ lfsr_reg[0]};
+            lfsr_reg <= lfsr_next; // Update LFSR state
         end
     end
 
-    // Assign the current LFSR value to the output
+    // Output the current LFSR value
     assign random_val = lfsr_reg;
 
 endmodule
