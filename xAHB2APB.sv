@@ -15,18 +15,22 @@ module xAHB2APB #(
     input  logic [1:0]  HTRANS    [NUM_AHB-1:0],   // AHB transfer type signals from multiple interfaces
     input  logic        HSEL      [NUM_AHB-1:0],   // AHB select signals from multiple interfaces
     input  logic        HREADY    [NUM_AHB-1:0],   // AHB ready signals from multiple interfaces
+    input  logic        HMASTLOCK [NUM_AHB-1:0],   // AHB master lock signals (AHB5)
+    input  logic        HNONSEC   [NUM_AHB-1:0],   // AHB Non-Secure signals (AHB5)
+    input  logic [3:0]  HCID      [NUM_AHB-1:0],   // AHB Compartment ID (AHB5)
     output logic [31:0] HRDATA    [NUM_AHB-1:0],   // AHB read data signals to multiple interfaces
     output logic        HRESP     [NUM_AHB-1:0],   // AHB response signals to multiple interfaces
 
-    // APB interface
+    // APB4 interface
     output logic [31:0] PADDR,     // APB address
     output logic [31:0] PWDATA,    // APB write data
     output logic        PWRITE,    // APB write enable
     output logic        PSEL,      // APB select
     output logic        PENABLE,   // APB enable
+    output logic [3:0]  PSTRB,     // APB write strobe (APB4)
     input  logic [31:0] PRDATA,    // APB read data
-    input  logic        PSLVERROR, // APB slave error
-    input  logic        PREADY     // APB ready signal
+    input  logic        PSLVERROR, // APB slave error (APB4)
+    input  logic        PREADY     // APB ready signal (APB4)
 );
 
     logic [$clog2(NUM_AHB)-1:0] selected_ahb;  // Selected AHB interface (log2 based on NUM_AHB)
@@ -122,27 +126,14 @@ module xAHB2APB #(
         PWRITE  = HWRITE[selected_ahb];
         PSEL    = HSEL[selected_ahb];
         PENABLE = HREADY[selected_ahb];
+
+        // Set PSTRB for APB4 based on HSIZE
+        case (HSIZE[selected_ahb])
+            3'b000: PSTRB = 4'b0001; // Byte (8-bit)
+            3'b001: PSTRB = 4'b0011; // Halfword (16-bit)
+            3'b010: PSTRB = 4'b1111; // Word (32-bit)
+            default: PSTRB = 4'b1111; // Default to 32-bit word access
+        endcase
     end
 
-    // Return the APB read data and response to the selected AHB interface
-    generate
-        genvar i;
-        for (i = 0; i < NUM_AHB; i++) begin : gen_ahb_response
-            always_ff @(posedge HCLK or negedge HRESETn) begin
-                if (!HRESETn) begin
-                    HRDATA[i] <= 32'd0;
-                    HRESP[i]  <= 1'b0;
-                end else begin
-                    if (i == selected_ahb) begin
-                        HRDATA[i] <= PRDATA;
-                        HRESP[i]  <= PSLVERROR;
-                    end else begin
-                        HRDATA[i] <= 32'd0;
-                        HRESP[i]  <= 1'b0;
-                    end
-                end
-            end
-        end
-    endgenerate
-
-endmodule
+    // Return the
