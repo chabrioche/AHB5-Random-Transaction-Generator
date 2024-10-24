@@ -33,13 +33,13 @@ module AHB5_Random_Transaction_Generator #(
     logic [31:0] lfsr_addr, lfsr_data, lfsr_ctrl, lfsr_sel, lfsr_comp_id, lfsr_mastlock, lfsr_nonsec;
 
     // Instantiate complex LFSRs for different values
-    LFSR lfsr_addr_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_addr));     // LFSR for generating address
-    LFSR lfsr_data_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_data));     // LFSR for generating write data
-    LFSR lfsr_ctrl_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_ctrl));     // LFSR for generating control signals
-    LFSR lfsr_sel_inst  (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_sel));      // LFSR for selecting AHB interface
-    LFSR lfsr_cid_inst  (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_comp_id));  // LFSR for generating Compartment ID
-    LFSR lfsr_mlock_inst(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_mastlock)); // LFSR for generating master lock
-    LFSR lfsr_nonsec_inst(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_nonsec));  // LFSR for generating non-secure signal
+    LFSR lfsr_addr_inst   (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_addr));     // LFSR for generating address
+    LFSR lfsr_data_inst   (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_data));     // LFSR for generating write data
+    LFSR lfsr_ctrl_inst   (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_ctrl));     // LFSR for generating control signals
+    LFSR lfsr_sel_inst    (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_sel));      // LFSR for selecting AHB interface
+    LFSR lfsr_cid_inst    (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_comp_id));  // LFSR for generating Compartment ID
+    LFSR lfsr_mlock_inst  (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_mastlock)); // LFSR for generating master lock
+    LFSR lfsr_nonsec_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_nonsec));   // LFSR for generating non-secure signal
 
     // Store AHB transaction details for comparison
     logic [31:0] logged_AHB_addr;
