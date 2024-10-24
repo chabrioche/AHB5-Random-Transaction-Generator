@@ -1,14 +1,11 @@
 module xAHB2APB #(
     parameter int NUM_AHB = 2,         // Number of AHB interfaces
     parameter int NUM_APB = 4,         // Number of APB peripherals
-    parameter int ARB_TYPE = 0,        // Arbitration type: 0 = round-robin, 1 = fixed-priority, 2 = weighted round-robin, 3 = dynamic priority, 4 = token-based
+    parameter int ARB_TYPE = 0,        // Arbitration type: 0 = round-robin, 1 = fixed-priority, 2 = weighted round-robin
     parameter int WEIGHT_0 = 1,        // Weight for AHB interface 0 (for weighted round-robin)
     parameter int WEIGHT_1 = 1,        // Weight for AHB interface 1 (for weighted round-robin)
-
-    // Attributes for APB peripherals (configurable through parameters)
-    parameter logic [NUM_APB-1:0] APB_SECURE = '0,    // Security attribute for each APB peripheral (1 = secure, 0 = non-secure)
-    parameter logic [3:0] APB_CID [NUM_APB-1:0] = '{default: 4'b0000},  // Compartment ID for each APB peripheral
-    parameter logic [3:0] APB_PRIV [NUM_APB-1:0] = '{default: 4'b0000}  // Privilege level for each APB peripheral
+    parameter int APB_BASE_ADDR = 32'h80000000, // Base address for APB peripherals
+    parameter int APB_ADDR_RANGE = 32'h00001000 // Address range for each APB peripheral
 )(
     input  logic        HCLK,          // AHB clock signal
     input  logic        HRESETn,       // Active-low reset signal for AHB
@@ -27,16 +24,18 @@ module xAHB2APB #(
     output logic [31:0] HRDATA    [NUM_AHB-1:0],   // AHB read data signals to multiple interfaces
     output logic        HRESP     [NUM_AHB-1:0],   // AHB response signals to multiple interfaces
 
-    // APB4 interface
+    // APB shared bus signals
     output logic [31:0] PADDR,     // APB address
     output logic [31:0] PWDATA,    // APB write data
     output logic        PWRITE,    // APB write enable
-    output logic        PSEL,      // APB select
     output logic        PENABLE,   // APB enable
     output logic [3:0]  PSTRB,     // APB write strobe (APB4)
     input  logic [31:0] PRDATA,    // APB read data
     input  logic        PSLVERROR, // APB slave error (APB4)
     input  logic        PREADY,    // APB ready signal (APB4)
+
+    // APB peripheral select signals
+    output logic [NUM_APB-1:0] PSEL, // Peripheral select signals
 
     // Illegal access detection outputs for each APB peripheral
     output logic [NUM_APB-1:0] sec_ilac,   // Illegal secure access signal for each APB peripheral
@@ -45,26 +44,21 @@ module xAHB2APB #(
 );
 
     logic [$clog2(NUM_AHB)-1:0] selected_ahb;  // Selected AHB interface (log2 based on NUM_AHB)
-    logic arb_enable;
-    int   priority_counter = 0;   // Used for weighted round-robin and dynamic priority
-
-    // Pulse-based illegal access generation registers
-    logic [NUM_APB-1:0] sec_ilac_reg;
-    logic [NUM_APB-1:0] cid_ilac_reg;
-    logic [NUM_APB-1:0] priv_ilac_reg;
+    logic [1:0] arb_state; // For round-robin and weighted round-robin arbitration
+    int weight_counter = 0;
 
     // Arbitration logic based on ARB_TYPE parameter
     always_ff @(posedge HCLK or negedge HRESETn) begin
         if (!HRESETn) begin
             selected_ahb <= 0;  // Start by selecting AHB interface 0
-            sec_ilac_reg <= '0;
-            cid_ilac_reg <= '0;
-            priv_ilac_reg <= '0;
+            arb_state    <= 0;
+            weight_counter <= 0;
         end else begin
             case (ARB_TYPE)
                 // Round-Robin Arbitration
                 0: begin
                     if (HSEL[selected_ahb] && HREADY[selected_ahb]) begin
+                        // If the current AHB is still performing a transaction, don't switch
                         selected_ahb <= selected_ahb;
                     end else begin
                         if (selected_ahb == NUM_AHB-1) begin
@@ -77,6 +71,7 @@ module xAHB2APB #(
 
                 // Fixed-Priority Arbitration
                 1: begin
+                    // Always select the first available AHB interface based on priority
                     for (int i = 0; i < NUM_AHB; i++) begin
                         if (HSEL[i] && HREADY[i]) begin
                             selected_ahb <= i;
@@ -87,66 +82,38 @@ module xAHB2APB #(
 
                 // Weighted Round-Robin Arbitration
                 2: begin
-                    if (priority_counter < WEIGHT_0 && selected_ahb == 0) begin
-                        if (HSEL[0] && HREADY[0]) begin
-                            selected_ahb <= 0;
-                            priority_counter <= priority_counter + 1;
-                        end
-                    end else if (priority_counter < WEIGHT_1 && selected_ahb == 1) begin
-                        if (HSEL[1] && HREADY[1]) begin
-                            selected_ahb <= 1;
-                            priority_counter <= priority_counter + 1;
-                        end
-                    end else begin
-                        priority_counter <= 0;
-                        if (selected_ahb == 0) selected_ahb <= 1;
-                        else selected_ahb <= 0;
-                    end
-                end
-
-                // Dynamic Priority Arbitration (simplified)
-                3: begin
-                    if (priority_counter < 4) begin
+                    if (weight_counter < (selected_ahb == 0 ? WEIGHT_0 : WEIGHT_1)) begin
                         if (HSEL[selected_ahb] && HREADY[selected_ahb]) begin
-                            priority_counter <= priority_counter + 1;
-                        end else begin
-                            if (selected_ahb == NUM_AHB-1) selected_ahb <= 0;
-                            else selected_ahb <= selected_ahb + 1;
-                            priority_counter <= 0;
+                            weight_counter <= weight_counter + 1;
                         end
                     end else begin
-                        priority_counter <= 0;
-                        if (selected_ahb == NUM_AHB-1) selected_ahb <= 0;
-                        else selected_ahb <= selected_ahb + 1;
+                        weight_counter <= 0;
+                        selected_ahb <= (selected_ahb == 0) ? 1 : 0;
                     end
                 end
 
-                // Token-Based Arbitration
-                4: begin
-                    if (HSEL[selected_ahb] && HREADY[selected_ahb]) begin
-                        selected_ahb <= selected_ahb;
-                    end else begin
-                        if (selected_ahb == NUM_AHB-1) selected_ahb <= 0;
-                        else selected_ahb <= selected_ahb + 1;
-                    end
-                end
-
-                default: selected_ahb <= 0;  // Default to AHB interface 0
+                default: selected_ahb <= 0;  // Default to AHB interface 0 if no valid ARB_TYPE
             endcase
-
-            // Generate pulse for illegal access signals
-            sec_ilac_reg <= sec_ilac;
-            cid_ilac_reg <= cid_ilac;
-            priv_ilac_reg <= priv_ilac;
         end
     end
 
-    // Forward the selected AHB signals to the APB interface
+    // Generate PSEL for each APB peripheral based on the address
     always_comb begin
+        // Clear all PSEL signals by default
+        PSEL = '0;
+
+        // Check which APB peripheral is addressed
+        for (int i = 0; i < NUM_APB; i++) begin
+            if ((HADDR[selected_ahb] >= APB_BASE_ADDR + i * APB_ADDR_RANGE) &&
+                (HADDR[selected_ahb] < APB_BASE_ADDR + (i + 1) * APB_ADDR_RANGE)) begin
+                PSEL[i] = 1'b1;  // Select the corresponding APB peripheral
+            end
+        end
+
+        // Forward the selected AHB signals to the shared APB interface
         PADDR   = HADDR[selected_ahb];
         PWDATA  = HWDATA[selected_ahb];
         PWRITE  = HWRITE[selected_ahb];
-        PSEL    = HSEL[selected_ahb];
         PENABLE = HREADY[selected_ahb];
 
         // Set PSTRB for APB4 based on HSIZE
@@ -162,33 +129,15 @@ module xAHB2APB #(
     generate
         genvar i;
         for (i = 0; i < NUM_APB; i++) begin : gen_ilac_signals
-            always_ff @(posedge HCLK or negedge HRESETn) begin
-                if (!HRESETn) begin
-                    sec_ilac[i] <= 1'b0;
-                    cid_ilac[i] <= 1'b0;
-                    priv_ilac[i] <= 1'b0;
-                end else begin
-                    // Generate pulse for illegal secure access (one clock cycle)
-                    if (APB_SECURE[i] && HNONSEC[selected_ahb]) begin
-                        sec_ilac[i] <= 1'b1;
-                    end else begin
-                        sec_ilac[i] <= 1'b0;
-                    end
+            always_comb begin
+                // Check for illegal secure access (if a non-secure transaction tries to access a secure peripheral)
+                sec_ilac[i] = (PSEL[i] && HNONSEC[selected_ahb]);
 
-                    // Generate pulse for illegal compartment ID access (one clock cycle)
-                    if (HCID[selected_ahb] != APB_CID[i]) begin
-                        cid_ilac[i] <= 1'b1;
-                    end else begin
-                        cid_ilac[i] <= 1'b0;
-                    end
+                // Check for illegal compartment ID access (if the HCID doesn't match the expected CID)
+                cid_ilac[i] = (PSEL[i] && HCID[selected_ahb] != i);
 
-                    // Generate pulse for illegal privilege access (one clock cycle)
-                    if (HPROT[selected_ahb][2:1] != APB_PRIV[i]) begin
-                        priv_ilac[i] <= 1'b1;
-                    end else begin
-                        priv_ilac[i] <= 1'b0;
-                    end
-                end
+                // Check for illegal privilege access (if the HPROT privilege level doesn't match)
+                priv_ilac[i] = (PSEL[i] && HPROT[selected_ahb][2:1] != 2'b11);
             end
         end
     endgenerate
