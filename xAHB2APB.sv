@@ -1,5 +1,6 @@
 module xAHB2APB #(
     parameter int NUM_AHB = 2,         // Number of AHB interfaces
+    parameter int NUM_APB = 4,         // Number of APB peripherals
     parameter int ARB_TYPE = 0,        // Arbitration type: 0 = round-robin, 1 = fixed-priority, 2 = weighted round-robin, 3 = dynamic priority, 4 = token-based
     parameter int WEIGHT_0 = 1,        // Weight for AHB interface 0 (for weighted round-robin)
     parameter int WEIGHT_1 = 1         // Weight for AHB interface 1 (for weighted round-robin)
@@ -30,25 +31,29 @@ module xAHB2APB #(
     output logic [3:0]  PSTRB,     // APB write strobe (APB4)
     input  logic [31:0] PRDATA,    // APB read data
     input  logic        PSLVERROR, // APB slave error (APB4)
-    input  logic        PREADY     // APB ready signal (APB4)
+    input  logic        PREADY,    // APB ready signal (APB4)
+
+    // Illegal access detection outputs for each APB peripheral
+    output logic [NUM_APB-1:0] sec_ilac,   // Illegal secure access signal for each APB peripheral
+    output logic [NUM_APB-1:0] cid_ilac,   // Illegal compartment ID access signal for each APB peripheral
+    output logic [NUM_APB-1:0] priv_ilac   // Illegal privilege access signal for each APB peripheral
 );
 
     logic [$clog2(NUM_AHB)-1:0] selected_ahb;  // Selected AHB interface (log2 based on NUM_AHB)
     logic arb_enable;
-    int   priority_counter = 0;   // Used for weighted round-robin and dynamic priority
-    logic [31:0] prev_addr;       // Store previous address for back-to-back optimizations
-    logic merging_active;         // Indicate if transaction merging is in progress
+
+    // Expected attributes for each APB peripheral (for checking against AHB transaction)
+    logic [NUM_APB-1:0] apb_secure;  // Security attribute (1 = secure, 0 = non-secure)
+    logic [3:0] apb_cid [NUM_APB-1:0];  // Expected compartment ID for each APB peripheral
+    logic [3:0] apb_priv [NUM_APB-1:0]; // Expected privilege level for each APB peripheral
 
     // Arbitration logic based on ARB_TYPE parameter
     always_ff @(posedge HCLK or negedge HRESETn) begin
         if (!HRESETn) begin
             selected_ahb <= 0;  // Start by selecting AHB interface 0
             arb_enable   <= 1'b0;
-            merging_active <= 1'b0;
-            prev_addr <= 32'd0;
         end else begin
             case (ARB_TYPE)
-
                 // Round-Robin Arbitration
                 0: begin
                     if (HSEL[selected_ahb] && HREADY[selected_ahb]) begin
@@ -91,7 +96,7 @@ module xAHB2APB #(
                     end
                 end
 
-                // Dynamic Priority Arbitration (simplified, based on number of transactions)
+                // Dynamic Priority Arbitration
                 3: begin
                     if (priority_counter < 4) begin
                         if (HSEL[selected_ahb] && HREADY[selected_ahb]) begin
@@ -120,15 +125,6 @@ module xAHB2APB #(
 
                 default: selected_ahb <= 0;  // Default to AHB interface 0
             endcase
-
-            // Check for merging back-to-back transactions (same address or sequential address)
-            if (HSEL[selected_ahb] && (HADDR[selected_ahb] == prev_addr + 4) && HREADY[selected_ahb]) begin
-                merging_active <= 1'b1;
-            end else begin
-                merging_active <= 1'b0;
-            end
-
-            prev_addr <= HADDR[selected_ahb];  // Update previous address
         end
     end
 
@@ -149,21 +145,50 @@ module xAHB2APB #(
         endcase
     end
 
-    // Return the APB read data and response to the selected AHB interface
+    // Illegal access checks for each APB peripheral
     generate
         genvar i;
-        for (i = 0; i < NUM_AHB; i++) begin : gen_ahb_response
+        for (i = 0; i < NUM_APB; i++) begin : gen_ilac_signals
+            always_comb begin
+                // Check for illegal secure access (if a non-secure transaction tries to access a secure peripheral)
+                if (apb_secure[i] && HNONSEC[selected_ahb]) begin
+                    sec_ilac[i] = 1'b1;
+                end else begin
+                    sec_ilac[i] = 1'b0;
+                end
+
+                // Check for illegal compartment ID access (if the HCID doesn't match the expected CID)
+                if (HCID[selected_ahb] != apb_cid[i]) begin
+                    cid_ilac[i] = 1'b1;
+                end else begin
+                    cid_ilac[i] = 1'b0;
+                end
+
+                // Check for illegal privilege access (if the HPROT privilege level doesn't match)
+                if (HPROT[selected_ahb][2:1] != apb_priv[i]) begin
+                    priv_ilac[i] = 1'b1;
+                end else begin
+                    priv_ilac[i] = 1'b0;
+                end
+            end
+        end
+    endgenerate
+
+    // Return the APB read data and response to the selected AHB interface
+    generate
+        genvar j;
+        for (j = 0; j < NUM_AHB; j++) begin : gen_ahb_response
             always_ff @(posedge HCLK or negedge HRESETn) begin
                 if (!HRESETn) begin
-                    HRDATA[i] <= 32'd0;
-                    HRESP[i]  <= 1'b0;
+                    HRDATA[j] <= 32'd0;
+                    HRESP[j]  <= 1'b0;
                 end else begin
-                    if (i == selected_ahb) begin
-                        HRDATA[i] <= PRDATA;
-                        HRESP[i]  <= PSLVERROR;
+                    if (j == selected_ahb) begin
+                        HRDATA[j] <= PRDATA;
+                        HRESP[j]  <= PSLVERROR;
                     end else begin
-                        HRDATA[i] <= 32'd0;
-                        HRESP[i]  <= 1'b0;
+                        HRDATA[j] <= 32'd0;
+                        HRESP[j]  <= 1'b0;
                     end
                 end
             end
