@@ -14,12 +14,21 @@ module AHB5_Random_Transaction_Generator #(
     input  logic        HREADY    [NUM_AHB-1:0],   // AHB ready signals
     input  logic [31:0] HRDATA    [NUM_AHB-1:0],   // AHB read data signals
     input  logic        HRESP     [NUM_AHB-1:0],   // AHB response signals
-    output logic [31:0] RDATA_OUT [NUM_AHB-1:0],   // Output for read data for each interface
-    output logic        RESP_OUT  [NUM_AHB-1:0]    // Output for response signal for each interface
+    // APB signals for checking
+    input  logic [31:0] PADDR,   // APB address from AHB-to-APB bridge
+    input  logic [31:0] PWDATA,  // APB write data from AHB-to-APB bridge
+    input  logic        PWRITE,  // APB write enable signal from bridge
+    input  logic        PSEL,    // APB select signal from bridge
+    input  logic        PENABLE  // APB enable signal from bridge
 );
 
     // LFSR instances for generating pseudo-random values
     logic [31:0] lfsr_addr, lfsr_data, lfsr_ctrl, lfsr_sel;
+    
+    // Store AHB transaction details for comparison
+    logic [31:0] logged_AHB_addr;
+    logic [31:0] logged_AHB_data;
+    logic        logged_AHB_write;
     
     // Instantiate LFSRs: one for address, one for write data, one for control, and one for interface selection
     LFSR lfsr1(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_addr));    // LFSR for generating address
@@ -42,8 +51,6 @@ module AHB5_Random_Transaction_Generator #(
                     HPROT[i]    <= 4'b0000;
                     HTRANS[i]   <= 2'b00;
                     HSEL[i]     <= 1'b0;               // Reset HSEL
-                    RDATA_OUT[i] <= 32'd0;
-                    RESP_OUT[i]  <= 1'b0;
                 end else begin
                     if (lfsr_sel % NUM_AHB == i && HREADY[i]) begin
                         // When the selected AHB interface is ready, generate a transaction
@@ -55,15 +62,34 @@ module AHB5_Random_Transaction_Generator #(
                         HPROT[i]   <= lfsr_ctrl[9:6];               // Randomize protection control
                         HTRANS[i]  <= lfsr_ctrl[11:10];             // Randomize transfer type
                         HSEL[i]    <= 1'b1;                         // Assert HSEL for the selected interface
+                        // Log the AHB transaction details
+                        logged_AHB_addr  <= HADDR[i];
+                        logged_AHB_data  <= HWDATA[i];
+                        logged_AHB_write <= HWRITE[i];
                     end else begin
                         HSEL[i] <= 1'b0;                            // Deassert HSEL for non-selected interfaces
                     end
-                    // Capture the response and read data from the interface
-                    RDATA_OUT[i] <= HRDATA[i];                      // Capture read data
-                    RESP_OUT[i]  <= HRESP[i];                       // Capture response signal
                 end
             end
         end
     endgenerate
+
+    // Check APB transaction against logged AHB transaction
+    always_ff @(posedge HCLK or negedge HRESETn) begin
+        if (!HRESETn) begin
+            // Reset the checker logic
+        end else if (PSEL && PENABLE) begin
+            // Ensure APB transaction matches the logged AHB transaction
+            if (PADDR != logged_AHB_addr) begin
+                $error("Mismatch: APB address %h does not match AHB address %h", PADDR, logged_AHB_addr);
+            end
+            if (PWRITE != logged_AHB_write) begin
+                $error("Mismatch: APB write enable %b does not match AHB write enable %b", PWRITE, logged_AHB_write);
+            end
+            if (PWRITE && (PWDATA != logged_AHB_data)) begin
+                $error("Mismatch: APB write data %h does not match AHB write data %h", PWDATA, logged_AHB_data);
+            end
+        end
+    end
 
 endmodule
