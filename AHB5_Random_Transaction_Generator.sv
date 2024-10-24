@@ -33,13 +33,13 @@ module AHB5_Random_Transaction_Generator #(
     logic [31:0] lfsr_addr, lfsr_data, lfsr_ctrl, lfsr_sel, lfsr_comp_id, lfsr_mastlock, lfsr_nonsec;
 
     // Instantiate complex LFSRs for different values
-    LFSR lfsr_addr_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_addr));    // LFSR for generating address
-    LFSR lfsr_data_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_data));    // LFSR for generating write data
-    LFSR lfsr_ctrl_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_ctrl));    // LFSR for generating control signals
-    LFSR lfsr_sel_inst  (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_sel));     // LFSR for selecting AHB interface
-    LFSR lfsr_cid_inst  (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_comp_id)); // LFSR for generating Compartment ID
-    LFSR lfsr_mlock_inst(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_mastlock));// LFSR for generating master lock
-    LFSR lfsr_nonsec_inst(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_nonsec));// LFSR for generating non-secure signal
+    LFSR lfsr_addr_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_addr));     // LFSR for generating address
+    LFSR lfsr_data_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_data));     // LFSR for generating write data
+    LFSR lfsr_ctrl_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_ctrl));     // LFSR for generating control signals
+    LFSR lfsr_sel_inst  (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_sel));      // LFSR for selecting AHB interface
+    LFSR lfsr_cid_inst  (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_comp_id));  // LFSR for generating Compartment ID
+    LFSR lfsr_mlock_inst(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_mastlock)); // LFSR for generating master lock
+    LFSR lfsr_nonsec_inst(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_nonsec));  // LFSR for generating non-secure signal
 
     // Store AHB transaction details for comparison
     logic [31:0] logged_AHB_addr;
@@ -49,6 +49,40 @@ module AHB5_Random_Transaction_Generator #(
     logic        logged_HMASTLOCK;
     logic        logged_HNONSEC;
     logic [2:0]  logged_HSIZE;      // Track HSIZE for comparison with PSTRB
+
+    // Covergroup for transaction coverage
+    covergroup AHB_Transaction_CG @(posedge HCLK);
+        // Coverpoint for address
+        coverpoint HADDR {
+            bins addr_full_range = {[32'h00000000:32'hFFFFFFFF]};
+        }
+
+        // Coverpoint for HWRITE
+        coverpoint HWRITE {
+            bins write = {1'b1};
+            bins read  = {1'b0};
+        }
+
+        // Coverpoint for HSIZE
+        coverpoint HSIZE {
+            bins size_8bit  = {3'b000}; // Byte
+            bins size_16bit = {3'b001}; // Halfword
+            bins size_32bit = {3'b010}; // Word
+        }
+
+        // Coverpoint for HBURST
+        coverpoint HBURST {
+            bins single = {3'b000};   // Single transfer
+            bins incr   = {3'b001};   // Incrementing burst
+            bins wrap   = {3'b011};   // Wrapping burst
+        }
+
+        // Cross coverage between HWRITE and HSIZE
+        cross HWRITE, HSIZE;
+    endgroup
+
+    // Instantiate the covergroup
+    AHB_Transaction_CG transaction_cov;
 
     // Generate logic for handling each AHB interface
     genvar i;
@@ -91,6 +125,9 @@ module AHB5_Random_Transaction_Generator #(
                         logged_HMASTLOCK <= HMASTLOCK[i];
                         logged_HNONSEC   <= HNONSEC[i];
                         logged_HSIZE     <= HSIZE[i];
+
+                        // Sample coverage for the transaction
+                        transaction_cov.sample();
                     end else begin
                         HSEL[i] <= 1'b0;                            // Deassert HSEL for non-selected interfaces
                     end
