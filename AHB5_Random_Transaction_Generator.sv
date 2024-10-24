@@ -90,7 +90,7 @@ module AHB5_Random_Transaction_Generator #(
                         logged_HMASTLOCK <= HMASTLOCK[i];
                         logged_HNONSEC   <= HNONSEC[i];
                     end else begin
-                        HSEL[i] <= 1'b0;                            // Deassert HSEL for non-selected interfaces
+                        HSEL[i] <= 1'b0; // Deassert HSEL for non-selected interfaces
                     end
                 end
             end
