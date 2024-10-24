@@ -114,15 +114,13 @@ module AHB5_Random_Transaction_Generator #(
             if (PWRITE && (PWDATA != logged_AHB_data)) begin
                 $error("Mismatch: APB write data %h does not match AHB write data %h", PWDATA, logged_AHB_data);
             end
-
             // Check PSTRB based on HSIZE
             case (logged_HSIZE)
-                3'b000: if (PSTRB != 4'b0001) $error("PSTRB mismatch: expected 4'b0001 for HSIZE=0 (byte)");
-                3'b001: if (PSTRB != 4'b0011) $error("PSTRB mismatch: expected 4'b0011 for HSIZE=1 (halfword)");
-                3'b010: if (PSTRB != 4'b1111) $error("PSTRB mismatch: expected 4'b1111 for HSIZE=2 (word)");
+                3'b000 : if (PSTRB != 4'b0001) $error("PSTRB mismatch: expected 4'b0001 for HSIZE=0 (byte)");
+                3'b001 : if (PSTRB != 4'b0011) $error("PSTRB mismatch: expected 4'b0011 for HSIZE=1 (halfword)");
+                3'b010 : if (PSTRB != 4'b1111) $error("PSTRB mismatch: expected 4'b1111 for HSIZE=2 (word)");
                 default: $error("Invalid HSIZE value: %b", logged_HSIZE);
             endcase
-
             // Check if PSLVERROR is asserted
             if (PSLVERROR) begin
                 $error("APB transaction error detected: PSLVERROR is asserted");
