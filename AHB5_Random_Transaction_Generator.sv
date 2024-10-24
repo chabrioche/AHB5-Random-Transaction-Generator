@@ -58,7 +58,6 @@ module AHB5_Random_Transaction_Generator #(
                     end else begin
                         HSEL[i] <= 1'b0;                            // Deassert HSEL for non-selected interfaces
                     end
-
                     // Capture the response and read data from the interface
                     RDATA_OUT[i] <= HRDATA[i];                      // Capture read data
                     RESP_OUT[i]  <= HRESP[i];                       // Capture response signal
