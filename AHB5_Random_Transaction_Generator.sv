@@ -29,9 +29,18 @@ module AHB5_Random_Transaction_Generator #(
     input  logic [3:0]  PSTRB      // APB write strobe signal for byte lanes
 );
 
-    // LFSR instances for generating pseudo-random values
+    // LFSR instances for generating pseudo-random values with complex feedback
     logic [31:0] lfsr_addr, lfsr_data, lfsr_ctrl, lfsr_sel, lfsr_comp_id, lfsr_mastlock, lfsr_nonsec;
-    
+
+    // Instantiate complex LFSRs for different values
+    LFSR lfsr_addr_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_addr));    // LFSR for generating address
+    LFSR lfsr_data_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_data));    // LFSR for generating write data
+    LFSR lfsr_ctrl_inst (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_ctrl));    // LFSR for generating control signals
+    LFSR lfsr_sel_inst  (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_sel));     // LFSR for selecting AHB interface
+    LFSR lfsr_cid_inst  (.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_comp_id)); // LFSR for generating Compartment ID
+    LFSR lfsr_mlock_inst(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_mastlock));// LFSR for generating master lock
+    LFSR lfsr_nonsec_inst(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_nonsec));// LFSR for generating non-secure signal
+
     // Store AHB transaction details for comparison
     logic [31:0] logged_AHB_addr;
     logic [31:0] logged_AHB_data;
@@ -40,15 +49,6 @@ module AHB5_Random_Transaction_Generator #(
     logic        logged_HMASTLOCK;
     logic        logged_HNONSEC;
     logic [2:0]  logged_HSIZE;      // Track HSIZE for comparison with PSTRB
-
-    // Instantiate LFSRs: for address, write data, control signals, compartment ID, master lock, and non-secure
-    LFSR lfsr1(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_addr));      // LFSR for generating address
-    LFSR lfsr2(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_data));      // LFSR for generating write data
-    LFSR lfsr3(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_ctrl));      // LFSR for generating control signals
-    LFSR lfsr4(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_sel));       // LFSR for selecting AHB interface
-    LFSR lfsr5(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_comp_id));   // LFSR for generating compartment ID (HCID)
-    LFSR lfsr6(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_mastlock));  // LFSR for generating master lock
-    LFSR lfsr7(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_nonsec));    // LFSR for generating non-secure
 
     // Generate logic for handling each AHB interface
     genvar i;
@@ -71,7 +71,7 @@ module AHB5_Random_Transaction_Generator #(
                 end else begin
                     if (lfsr_sel % NUM_AHB == i && HREADY[i]) begin
                         // When the selected AHB interface is ready, generate a transaction
-                        HADDR[i]      <= (lfsr_addr & 32'hFFFF_FFFF);  // Generate a random address
+                        HADDR[i]      <= lfsr_addr;                    // Generate a random address
                         HWDATA[i]     <= lfsr_data;                    // Generate random write data
                         HWRITE[i]     <= lfsr_ctrl[0];                 // Randomize between read/write
                         HSIZE[i]      <= lfsr_ctrl[2:0];               // Randomize transfer size
@@ -114,6 +114,7 @@ module AHB5_Random_Transaction_Generator #(
             if (PWRITE && (PWDATA != logged_AHB_data)) begin
                 $error("Mismatch: APB write data %h does not match AHB write data %h", PWDATA, logged_AHB_data);
             end
+
             // Check PSTRB based on HSIZE
             case (logged_HSIZE)
                 3'b000: if (PSTRB != 4'b0001) $error("PSTRB mismatch: expected 4'b0001 for HSIZE=0 (byte)");
@@ -121,6 +122,7 @@ module AHB5_Random_Transaction_Generator #(
                 3'b010: if (PSTRB != 4'b1111) $error("PSTRB mismatch: expected 4'b1111 for HSIZE=2 (word)");
                 default: $error("Invalid HSIZE value: %b", logged_HSIZE);
             endcase
+
             // Check if PSLVERROR is asserted
             if (PSLVERROR) begin
                 $error("APB transaction error detected: PSLVERROR is asserted");
@@ -129,4 +131,3 @@ module AHB5_Random_Transaction_Generator #(
     end
 
 endmodule
-
