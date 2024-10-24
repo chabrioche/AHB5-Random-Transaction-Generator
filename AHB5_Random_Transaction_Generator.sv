@@ -39,6 +39,7 @@ module AHB5_Random_Transaction_Generator #(
     logic [3:0]  logged_HCID;
     logic        logged_HMASTLOCK;
     logic        logged_HNONSEC;
+    logic [2:0]  logged_HSIZE;      // Track HSIZE for comparison with PSTRB
 
     // Instantiate LFSRs: for address, write data, control signals, compartment ID, master lock, and non-secure
     LFSR lfsr1(.clk(HCLK), .rstn(HRESETn), .random_val(lfsr_addr));      // LFSR for generating address
@@ -89,8 +90,9 @@ module AHB5_Random_Transaction_Generator #(
                         logged_HCID      <= HCID[i];
                         logged_HMASTLOCK <= HMASTLOCK[i];
                         logged_HNONSEC   <= HNONSEC[i];
+                        logged_HSIZE     <= HSIZE[i];
                     end else begin
-                        HSEL[i] <= 1'b0; // Deassert HSEL for non-selected interfaces
+                        HSEL[i] <= 1'b0;                            // Deassert HSEL for non-selected interfaces
                     end
                 end
             end
@@ -112,7 +114,19 @@ module AHB5_Random_Transaction_Generator #(
             if (PWRITE && (PWDATA != logged_AHB_data)) begin
                 $error("Mismatch: APB write data %h does not match AHB write data %h", PWDATA, logged_AHB_data);
             end
-            // Additional checks for PSTRB, PSLVERROR, etc., can be added if necessary
+
+            // Check PSTRB based on HSIZE
+            case (logged_HSIZE)
+                3'b000: if (PSTRB != 4'b0001) $error("PSTRB mismatch: expected 4'b0001 for HSIZE=0 (byte)");
+                3'b001: if (PSTRB != 4'b0011) $error("PSTRB mismatch: expected 4'b0011 for HSIZE=1 (halfword)");
+                3'b010: if (PSTRB != 4'b1111) $error("PSTRB mismatch: expected 4'b1111 for HSIZE=2 (word)");
+                default: $error("Invalid HSIZE value: %b", logged_HSIZE);
+            endcase
+
+            // Check if PSLVERROR is asserted
+            if (PSLVERROR) begin
+                $error("APB transaction error detected: PSLVERROR is asserted");
+            end
         end
     end
 
