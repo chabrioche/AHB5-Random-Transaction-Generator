@@ -36,12 +36,16 @@ module xAHB2APB #(
     logic [$clog2(NUM_AHB)-1:0] selected_ahb;  // Selected AHB interface (log2 based on NUM_AHB)
     logic arb_enable;
     int   priority_counter = 0;   // Used for weighted round-robin and dynamic priority
+    logic [31:0] prev_addr;       // Store previous address for back-to-back optimizations
+    logic merging_active;         // Indicate if transaction merging is in progress
 
     // Arbitration logic based on ARB_TYPE parameter
     always_ff @(posedge HCLK or negedge HRESETn) begin
         if (!HRESETn) begin
             selected_ahb <= 0;  // Start by selecting AHB interface 0
             arb_enable   <= 1'b0;
+            merging_active <= 1'b0;
+            prev_addr <= 32'd0;
         end else begin
             case (ARB_TYPE)
 
@@ -116,6 +120,15 @@ module xAHB2APB #(
 
                 default: selected_ahb <= 0;  // Default to AHB interface 0
             endcase
+
+            // Check for merging back-to-back transactions (same address or sequential address)
+            if (HSEL[selected_ahb] && (HADDR[selected_ahb] == prev_addr + 4) && HREADY[selected_ahb]) begin
+                merging_active <= 1'b1;
+            end else begin
+                merging_active <= 1'b0;
+            end
+
+            prev_addr <= HADDR[selected_ahb];  // Update previous address
         end
     end
 
@@ -136,4 +149,25 @@ module xAHB2APB #(
         endcase
     end
 
-    // Return the
+    // Return the APB read data and response to the selected AHB interface
+    generate
+        genvar i;
+        for (i = 0; i < NUM_AHB; i++) begin : gen_ahb_response
+            always_ff @(posedge HCLK or negedge HRESETn) begin
+                if (!HRESETn) begin
+                    HRDATA[i] <= 32'd0;
+                    HRESP[i]  <= 1'b0;
+                end else begin
+                    if (i == selected_ahb) begin
+                        HRDATA[i] <= PRDATA;
+                        HRESP[i]  <= PSLVERROR;
+                    end else begin
+                        HRDATA[i] <= 32'd0;
+                        HRESP[i]  <= 1'b0;
+                    end
+                end
+            end
+        end
+    endgenerate
+
+endmodule
