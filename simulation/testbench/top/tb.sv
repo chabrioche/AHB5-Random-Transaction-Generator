@@ -1,4 +1,4 @@
-module testbench;
+module tb;
 
     // Testbench parameters
     parameter int NUM_AHB        = 2; // Number of AHB interfaces
