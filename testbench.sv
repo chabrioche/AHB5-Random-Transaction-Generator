@@ -1,11 +1,11 @@
 module testbench;
 
     // Testbench parameters
-    parameter int NUM_AHB = 2;       // Number of AHB interfaces
-    parameter int NUM_APB = 4;       // Number of APB peripherals
-    parameter int ADDR_WIDTH = 32;
-    parameter int DATA_WIDTH = 32;
-    parameter int APB_BASE_ADDR = 32'h80000000;
+    parameter int NUM_AHB        = 2; // Number of AHB interfaces
+    parameter int NUM_APB        = 4; // Number of APB peripherals
+    parameter int ADDR_WIDTH     = 32;
+    parameter int DATA_WIDTH     = 32;
+    parameter int APB_BASE_ADDR  = 32'h80000000;
     parameter int APB_ADDR_RANGE = 32'h00001000;
     parameter int clk_div = 1;       // Clock division factor for PCLK relative to HCLK
 
