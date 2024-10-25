@@ -1,16 +1,17 @@
-module tb;
+module testbench;
 
     // Testbench parameters
     parameter int NUM_AHB = 2;       // Number of AHB interfaces
-    parameter int NUM_APB = 4;       // Number of APB peripherals (generic)
-
+    parameter int NUM_APB = 4;       // Number of APB peripherals
     parameter int ADDR_WIDTH = 32;
     parameter int DATA_WIDTH = 32;
     parameter int APB_BASE_ADDR = 32'h80000000;
     parameter int APB_ADDR_RANGE = 32'h00001000;
+    parameter int clk_div = 1;       // Clock division factor for PCLK relative to HCLK
 
     // Clock and reset signals
     logic HCLK;
+    logic PCLK;
     logic HRESETn;
 
     // AHB signals
@@ -42,17 +43,19 @@ module tb;
     logic cid_ilac [NUM_APB-1:0];
     logic priv_ilac [NUM_APB-1:0];
 
-    // Instantiate the xAHB2APB bridge with arbitration
+    // Instantiate the xAHB2APB bridge with arbitration and PCLK synchronization
     xAHB2APB #(
         .NUM_AHB(NUM_AHB),
         .NUM_APB(NUM_APB),
         .ARB_TYPE(0), // Round-robin arbitration
         .WEIGHT_0(1), // Not used for round-robin, but set for weighted round-robin
-        .WEIGHT_1(1), // Not used for round-robin
+        .WEIGHT_1(1),
         .APB_BASE_ADDR(APB_BASE_ADDR),
-        .APB_ADDR_RANGE(APB_ADDR_RANGE)
+        .APB_ADDR_RANGE(APB_ADDR_RANGE),
+        .clk_div(clk_div)
     ) dut (
         .HCLK(HCLK),
+        .PCLK(PCLK),
         .HRESETn(HRESETn),
         .HADDR(HADDR),
         .HWDATA(HWDATA),
@@ -79,7 +82,7 @@ module tb;
         .priv_ilac(priv_ilac)
     );
 
-    // Instantiate multiple APB peripherals (generic number of peripherals)
+    // Instantiate multiple APB peripherals
     genvar i;
     generate
         for (i = 0; i < NUM_APB; i++) begin : apb_peripherals
@@ -87,7 +90,7 @@ module tb;
                 .ADDR_WIDTH(ADDR_WIDTH),
                 .DATA_WIDTH(DATA_WIDTH)
             ) apb_slave (
-                .PCLK(HCLK),
+                .PCLK(PCLK),
                 .PRESETn(HRESETn),
                 .PADDR(PADDR),          // Shared APB address bus
                 .PWDATA(PWDATA),        // Shared APB write data bus
@@ -101,7 +104,28 @@ module tb;
         end
     endgenerate
 
-    // AHB random transaction generator for AHB interface 0
+    // Clock generation
+    initial begin
+        HCLK = 0;
+        forever #5 HCLK = ~HCLK;  // 100 MHz HCLK
+    end
+
+    // PCLK generation based on clk_div parameter
+    initial begin
+        PCLK = 0;
+        forever begin
+            repeat(clk_div) @(posedge HCLK); // Wait for clk_div HCLK cycles
+            PCLK = ~PCLK;
+        end
+    end
+
+    // Reset generation
+    initial begin
+        HRESETn = 0;
+        #20 HRESETn = 1;
+    end
+
+    // AHB random transaction generator
     AHB5_Random_Transaction_Generator #(
         .ADDR_WIDTH(ADDR_WIDTH),
         .DATA_WIDTH(DATA_WIDTH)
@@ -117,7 +141,6 @@ module tb;
         .HREADY(HREADY[0])
     );
 
-    // AHB random transaction generator for AHB interface 1
     AHB5_Random_Transaction_Generator #(
         .ADDR_WIDTH(ADDR_WIDTH),
         .DATA_WIDTH(DATA_WIDTH)
@@ -132,18 +155,6 @@ module tb;
         .HSEL(HSEL[1]),
         .HREADY(HREADY[1])
     );
-
-    // Clock generation
-    initial begin
-        HCLK = 0;
-        forever #5 HCLK = ~HCLK;  // 100 MHz clock
-    end
-
-    // Reset generation
-    initial begin
-        HRESETn = 0;
-        #20 HRESETn = 1;
-    end
 
     // Simulation control
     initial begin
