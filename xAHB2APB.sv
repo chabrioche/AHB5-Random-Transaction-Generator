@@ -4,7 +4,7 @@ module xAHB2APB #(
     parameter int ARB_TYPE = 0,                  // Arbitration type: 0 = round-robin, 1 = fixed-priority, 2 = weighted round-robin
     parameter int WEIGHT_0 = 1,                  // Weight for AHB interface 0 (for weighted round-robin)
     parameter int WEIGHT_1 = 1,                  // Weight for AHB interface 1 (for weighted round-robin)
-    parameter int APB_BASE_ADDR = 32'h80000000,  // Base address for APB peripherals
+    parameter int APB_BASE_ADDR  = 32'h80000000, // Base address for APB peripherals
     parameter int APB_ADDR_RANGE = 32'h00001000, // Address range for each APB peripheral
     parameter int clk_div = 1                    // Division factor for PCLK relative to HCLK
 )(
