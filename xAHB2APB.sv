@@ -51,13 +51,13 @@ module xAHB2APB #(
         RESPONSE    // Capture APB response and complete transaction
     } state_t;
 
-    state_t state, next_state;             // Current and next states
+    state_t state, next_state;                // Current and next states
     logic [$clog2(NUM_AHB)-1:0] selected_ahb; // Selected AHB interface
-    int weight_counter = 0;                // Counter for weighted round-robin arbitration
+    int weight_counter = 0;                   // Counter for weighted round-robin arbitration
 
     // Synchronization to PCLK
-    logic [31:0] clk_div_counter;          // Counter to track PCLK cycles in relation to HCLK
-    logic enable_pclk_state;               // Indicates when PCLK is active for the APB state machine
+    logic [31:0] clk_div_counter;             // Counter to track PCLK cycles in relation to HCLK
+    logic enable_pclk_state;                  // Indicates when PCLK is active for the APB state machine
 
     always_ff @(posedge HCLK or negedge HRESETn) begin
         if (!HRESETn) begin
