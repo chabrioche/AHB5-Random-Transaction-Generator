@@ -152,7 +152,7 @@ module xAHB2APB #(
                         weight_counter <= weight_counter + 1;
                     end else begin
                         weight_counter <= 0;
-                        selected_ahb <= (selected_ahb == 0) ? 1 : 0;
+                        selected_ahb   <= (selected_ahb == 0) ? 1 : 0;
                     end
                 end
                 default: selected_ahb <= 0;
@@ -165,8 +165,8 @@ module xAHB2APB #(
         genvar i;
         for (i = 0; i < NUM_APB; i++) begin : gen_ilac_signals
             always_comb begin
-                sec_ilac[i] = (PSEL[i] && HPROT[selected_ahb][3] == 1'b0);
-                cid_ilac[i] = (PSEL[i] && HPROT[selected_ahb][2] != 1'b1);
+                sec_ilac[i]  = (PSEL[i] && HPROT[selected_ahb][3] == 1'b0);
+                cid_ilac[i]  = (PSEL[i] && HPROT[selected_ahb][2] != 1'b1);
                 priv_ilac[i] = (PSEL[i] && HPROT[selected_ahb][1:0] != 2'b11);
             end
         end
