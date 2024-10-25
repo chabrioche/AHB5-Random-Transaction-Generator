@@ -1,16 +1,16 @@
 module xAHB2APB #(
-    parameter int NUM_AHB = 2,             // Number of AHB interfaces
-    parameter int NUM_APB = 4,             // Number of APB peripherals
-    parameter int ARB_TYPE = 0,            // Arbitration type: 0 = round-robin, 1 = fixed-priority, 2 = weighted round-robin
-    parameter int WEIGHT_0 = 1,            // Weight for AHB interface 0 (for weighted round-robin)
-    parameter int WEIGHT_1 = 1,            // Weight for AHB interface 1 (for weighted round-robin)
+    parameter int NUM_AHB = 2,                   // Number of AHB interfaces
+    parameter int NUM_APB = 4,                   // Number of APB peripherals
+    parameter int ARB_TYPE = 0,                  // Arbitration type: 0 = round-robin, 1 = fixed-priority, 2 = weighted round-robin
+    parameter int WEIGHT_0 = 1,                  // Weight for AHB interface 0 (for weighted round-robin)
+    parameter int WEIGHT_1 = 1,                  // Weight for AHB interface 1 (for weighted round-robin)
     parameter int APB_BASE_ADDR = 32'h80000000,  // Base address for APB peripherals
     parameter int APB_ADDR_RANGE = 32'h00001000, // Address range for each APB peripheral
-    parameter int clk_div = 1              // Division factor for PCLK relative to HCLK
+    parameter int clk_div = 1                    // Division factor for PCLK relative to HCLK
 )(
-    input  logic        HCLK,              // AHB clock signal
-    input  logic        PCLK,              // APB clock signal (synchronous to HCLK but slower)
-    input  logic        HRESETn,           // Active-low reset signal for AHB
+    input  logic        HCLK,                    // AHB clock signal
+    input  logic        PCLK,                    // APB clock signal (synchronous to HCLK but slower)
+    input  logic        HRESETn,                 // Active-low reset signal for AHB
 
     // AHB interface signals
     input  logic [31:0] HADDR     [NUM_AHB-1:0],   // AHB address signals
